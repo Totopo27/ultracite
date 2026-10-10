@@ -1,3 +1,115 @@
+## 8.0.0
+
+### Major Changes
+
+- d0875c0: Every agent now reads Ultracite's rules from `AGENTS.md`. `init` writes the rules there once, whichever agents you pick, and only adds a file for the four agents that need one more step to see them:
+  
+  - **Claude Code** reads `AGENTS.md` only when the project has no `CLAUDE.md`, so `init` adds an `@AGENTS.md` import to the project's `CLAUDE.md` or `.claude/CLAUDE.md` when there is one.
+  - **Gemini CLI** reads `GEMINI.md` by default, so `init` adds `AGENTS.md` to `context.fileName` in `.gemini/settings.json`, keeping `GEMINI.md`.
+  - **Aider** gets `.aider.conf.yml` pointed at `AGENTS.md`, as before.
+  - **Replit Agent** reads only `replit.md`, so it keeps a copy of the rules there.
+  
+  Firebender now reads `AGENTS.md` too. The `init` prompt asks which agents you use and lists `AGENTS.md` (Universal) plus those four.
+  
+  Projects set up by earlier versions move over the next time `init` runs: it takes Ultracite's block out of `.claude/CLAUDE.md`, `GEMINI.md`, `.firebender/rules/ultracite.mdc` and Aider's `ultracite.md`, removes a file left with nothing else in it, and adds the import or settings that agent needs. That happens whenever one of those files still holds the rules, whichever agents you pick, since a leftover `.claude/CLAUDE.md` stops Claude Code from reading `AGENTS.md`.
+- 3ee5b8c: Aider now loads Ultracite's rules and lints each file it edits. Aider reads no instructions file on its own, so the `ultracite.md` that `init --agents aider` used to write was never loaded. Now `init` writes the rules to `AGENTS.md` and merges two keys into `.aider.conf.yml`: `read: AGENTS.md`, and `lint-cmd` set to the project's `ultracite fix`, which Aider runs on every file it edits, asking the model to fix whatever is left. The rest of the file, comments included, stays as written, a `lint-cmd` that runs another linter is left alone, and an `ultracite.md` that holds nothing but the rules is removed. Aider keeps its own option in the `init` prompt, since the universal `AGENTS.md` option doesn't write `.aider.conf.yml`.
+  
+  The agent list also uses the current names for Snowflake CoCo (formerly Snowflake Cortex), Deep Agents, goose and Gemini CLI. Their `--agents` IDs don't change.
+- f4c8a32: Make every rule in the Biome core preset an error. `noSuspiciousSemicolonInJsx` came from Biome's recommended set at warning level, so `ultracite check` passed with it unless the React preset was on. It and the two other rules core inherited from that set, `noDuplicateJsxProps` and `noVoidElementsWithChildren`, are now set to `error` explicitly.
+- ed5ed04: `compat/compat` is now an error in the ESLint core preset. It was the last warning-level rule in any preset, so `ultracite check` passed while it reported browser APIs your [browserslist](https://github.com/browserslist/browserslist) targets don't support. Set your targets in a `browserslist` key in `package.json` or a `.browserslistrc` file, or turn the rule off in your config if the project only runs on a server.
+- 16fa476: Lint the scripts in Vue, Svelte and Astro components with the ESLint core rules. Core's globs only matched `.js` and `.ts` files, so a `.vue` file got only the Vue rules, a `.svelte` file only the Svelte rules, and an `.astro` file's frontmatter only the Astro rules, while Oxlint already runs its core rules on those scripts. The `vue`, `svelte` and `astro` presets now apply core's rules to their components, including the TypeScript rules, with the type-checked ones off because a script block isn't part of a tsconfig.
+  
+  - Components now get core's filename rule like any other file, as on Oxlint, so a PascalCase component such as `TaskList.vue` is reported. SvelteKit route files (`+page.svelte`) are exempt, and Astro and Nuxt pages (`[slug].astro`, `[id].vue`) get the same route-aware pattern as other `pages/` files, on ESLint and in Oxlint's JS plugins.
+  - In Svelte components and rune modules, `prefer-const`, `unicorn/no-top-level-assignment-in-function` and `sonarjs/declarations-in-global-scope` are off: `svelte/prefer-const` replaces the first, and the other two misread `$props()` and `$state` in a component's scope. SvelteKit's `PageProps` and `LayoutProps`, and Astro's `Props`, are allowed by `unicorn/name-replacements`.
+- ed5ed04: Cypress and Storybook rules move out of the ESLint core preset into opt-in framework presets, `ultracite/eslint/cypress` and `ultracite/eslint/storybook`. Core loaded both plugins for every project, so `init` installed `eslint-plugin-cypress`, `eslint-plugin-storybook` and the whole `storybook` package for every ESLint setup, whether or not the project used them.
+  
+  `init` now offers `cypress` and `storybook` with the other frameworks (`--frameworks cypress storybook`). It preselects them when `cypress` or `storybook` is in `package.json`, and installs their plugins only when you pick them. To keep linting Cypress specs and stories, add the presets to `eslint.config.mjs` after `core`:
+  
+  ```js
+  import core from "ultracite/eslint/core";
+  import cypress from "ultracite/eslint/cypress";
+  import storybook from "ultracite/eslint/storybook";
+  
+  export default [...core, ...cypress, ...storybook];
+  ```
+  
+  Oxlint and Biome have no Cypress or Storybook rules, so `ultracite/oxlint/cypress`, `ultracite/oxlint/storybook`, `ultracite/biome/cypress` and `ultracite/biome/storybook` are empty presets that keep the framework selectable with every linter.
+- ed5ed04: ESLint and Stylelint no longer run Prettier as a rule. `ultracite check` and `ultracite fix` already run Prettier as their own step, so the `prettier/prettier` rule from `eslint-plugin-prettier` and `stylelint-prettier` formatted and reported every file a second time. The ESLint core preset and the Stylelint preset drop those plugins and keep `eslint-config-prettier`, so no lint rule fights Prettier, and `init` no longer installs `eslint-plugin-prettier` or `stylelint-prettier`.
+  
+  ESLint and Stylelint now report only lint problems. Formatting problems come from the Prettier step of `ultracite check`, so running `eslint` or `stylelint` on their own no longer reports formatting. A config that sets `prettier/prettier` itself now fails with an unknown-rule error: remove that setting, or install the plugin and register it in your own config to keep it.
+- ed5ed04: The ESLint rules that need type information are now opt-in, as they already are on Oxlint and Biome. The core preset no longer turns on the project service or the type-checked `@typescript-eslint` rules, such as `no-floating-promises`, `no-unsafe-return` and `strict-boolean-expressions`, so it lints TypeScript without a tsconfig and without building a TypeScript program, which is much faster. Where a type-checked rule replaced a core ESLint rule on TypeScript files (`no-implied-eval`, `no-throw-literal`, `prefer-destructuring`, `prefer-promise-reject-errors`, `require-await`), core now runs the ESLint rule, as Oxlint does without type information.
+  
+  The type-checked rules live in a new `ultracite/eslint/type-aware` preset. Framework plugins with type-checked rules have an add-on after their preset: `ultracite/eslint/<framework>/type-aware` for `angular`, `jest`, `nestjs`, `qwik`, `tanstack` and `vitest`. `init --type-aware` adds the preset and the add-ons for the frameworks you pick, and re-running `init` without the flag keeps them. To keep type-aware linting, add them after `core` and after each framework:
+  
+  ```js
+  import core from "ultracite/eslint/core";
+  import typeAware from "ultracite/eslint/type-aware";
+  import vitest from "ultracite/eslint/vitest";
+  import vitestTypeAware from "ultracite/eslint/vitest/type-aware";
+  
+  export default [...core, ...typeAware, ...vitest, ...vitestTypeAware];
+  ```
+- 7965ec2: `ultracite fix --hook` now hands the problems it can't fix back to the agent. In Claude Code, CodeBuddy, Windsurf, and VS Code's Local agent (which runs the GitHub Copilot hook), the hook prints everything the linter and formatter report to stderr and exits with code 2 when problems remain, which those hosts show to the agent so it fixes them in its next step. Cursor and the Copilot CLI and cloud agent don't pass a hook's output to the agent, so their hooks keep the previous output and exit code.
+- ed5ed04: `ultracite init` now asks before it changes files it doesn't own, and asks every question before it writes anything.
+  
+  - When you pick a linter other than the one the project uses, an interactive run lists the other linters' config files and packages and asks before removing them. If you keep them, init warns when `ultracite check` would still find and run the old linter. `--yes` removes them without asking, as before.
+  - An ESLint setup keeps legacy `.eslintrc` files. ESLint 10 doesn't read them, so they can't conflict with the flat config, and `ultracite doctor` no longer flags them on an ESLint setup. Moving to Biome or Oxlint still removes them.
+  - Init only turns on `strictNullChecks` in your `tsconfig*.json` files when type-aware linting is on, since only the type-aware rules need it, and an interactive run lists the files and asks first. It used to change every tsconfig on every run.
+  - In a TypeScript project, an interactive run asks whether to turn on type-aware linting when `--type-aware` isn't passed. A project that already has it keeps it.
+- ed5ed04: `ultracite init` has a `--yes` (`-y`) flag for running without prompts, and `--quiet` now only controls output.
+  
+  - `--yes` takes the default for every question no flag answers, without asking. Init does this on its own when `CI` is `true` or `1`, or when there's no terminal to answer prompts in, so it never waits for input in a pipeline.
+  - `--quiet` leaves out the intro banner, spinners and progress messages, and no longer skips the prompts. A script that ran `init --quiet` to avoid them should pass `--yes --quiet`.
+  - Warnings now print in quiet runs too, such as the one for a `check` or `fix` script that init left as it was because it runs another tool.
+- cbb349c: Add three agents and fix the Windsurf hook.
+  
+  - `init --agents` now takes `fx` (Vercel Labs), `antigravity` (Antigravity CLI, Google's successor to Gemini CLI for consumer accounts) and `grok` (Grok Build). All three read `AGENTS.md`.
+  - `init --hooks grok` writes a post-edit hook to `.grok/hooks/ultracite.json` in Claude Code's format. Grok Build runs it after each `Write` or `Edit` once you trust project hooks with `/hooks-trust`, and hands the problems `ultracite fix --hook` leaves back to the model. `fix --hook` now recognises Grok's own tool names (`search_replace`, `hashline_edit`), which it used to skip. Grok also reads `.claude/settings.json`, but runs a hook once when several files give it the same event, command and matcher, as the Claude Code and Grok Build hooks do, so a project can have both.
+  - Windsurf is now Devin Desktop, with the editor and hook ID `devin` instead of `windsurf`, which init still accepts with a note to switch. Its hook now goes in `.devin/hooks.json`. Devin Desktop reads that file and ignores `.windsurf/hooks.json` once it has hooks, so a project with its own `.devin/hooks.json` never ran Ultracite's hook. Re-running `init --hooks devin` moves the hook, copies the project's own hooks from `.windsurf/hooks.json` into the new file so they keep running, and leaves the old file with only those hooks, or removes it when nothing else is in it.
+- ed5ed04: Ultracite now requires Node.js 22.18 or later, or Bun, and says so in its `engines` field. The CLI's dependencies have needed Node 22 since 7.10.0, so on Node 20 it stopped at startup with `TEXT_ENCODINGS.union is not a function`, and the `oxlint.config.ts` that `init` writes needs Node 22.18 to load on the Node 22 line. Node 20 reached end of life in April 2026.
+  
+  Requires Node.js >= 22.18.0
+- ed5ed04: `ultracite init --type-aware` now turns on type-aware linting for Oxlint. It used to install `oxlint-tsgolint` without telling Oxlint to use it, so rules that need type information, such as `typescript/no-floating-promises`, only ran when you passed `--type-aware` to `ultracite check` yourself. Init now also sets `options: { typeAware: true }` in `oxlint.config.ts`, so `check`, `fix` and the editor extension run them. A config with an `options` object of its own is left as written, with a note to add `typeAware: true` to it. Re-running `init` on a project that has `oxlint-tsgolint` installed turns it on, which can report new problems.
+- edc6ca6: Update the agents `ultracite init` sets up to match what's still shipping.
+  
+  - Remove Roo Code (shut down in May 2026), Continue (no longer maintained since Cursor acquired it), Firebase Studio (closing in March 2027) and MCPJam (an MCP testing tool rather than a coding agent). `--agents roo-code`, `continue`, `firebase-studio` and `mcpjam` now write the rules to `AGENTS.md`, as `universal` does, with a warning, and the skill installer no longer targets `.roo` or `.continue`. Files earlier versions wrote for them, such as `.roo/rules/ultracite.md`, are left in place.
+  - Amazon Q CLI is now Kiro CLI, with the ID `kiro-cli` instead of `amazon-q-cli`, which init still accepts with a note to switch. Kiro reads `AGENTS.md` in both its CLI and IDE and ignores `.amazonq/rules` once a project has a `.kiro` folder, so init writes the rules to `AGENTS.md` (and `universal` covers it) instead of `.amazonq/rules/ultracite.md`.
+  - Mux is now Xum, with the ID `xum` instead of `mux`, which init still accepts with a note to switch.
+  - Kimi CLI is now Kimi Code CLI, with the ID `kimi-code` instead of `kimi-cli`, and Snowflake Cortex Code is now Snowflake CoCo, with the ID `snowflake-coco` instead of `snowflake-cortex`. The old IDs still work, with a note to switch. AMP is now Amp; its ID doesn't change.
+- ed5ed04: The pre-commit hooks that `ultracite init` sets up now fix only the files you staged, instead of running `ultracite fix` on the whole project.
+  
+  - **Husky:** the hook passes the staged files to `ultracite fix` and re-stages them. A file you staged only part of is fixed but no longer re-staged, because `git add` would also have committed the changes you left unstaged. The hook lists those files so you can review the fixes and stage them yourself.
+  - **Lefthook:** the job runs `ultracite fix {staged_files}`, so Lefthook passes the staged files that match its globs, and `stage_fixed` re-stages only those.
+  - **pre-commit:** the hook no longer sets `pass_filenames: false`, so pre-commit passes the staged files to `ultracite fix`. It also sets `require_serial: true`, which keeps it to a single `ultracite fix` run.
+  
+  Since the globs now decide which files get fixed, the Lefthook job and the pre-commit hook match every file type the linters and formatters handle: `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts`, `.json`, `.jsonc`, `.css`, `.scss`, `.less`, `.vue`, `.svelte`, `.astro`, `.html`, `.md`, `.mdx`, `.yaml`, `.yml`, `.graphql` and `.gql`. Before, they matched only `.js`, `.jsx`, `.ts`, `.tsx`, `.json`, `.jsonc` and `.css`. The pre-commit hook uses a `files` pattern instead of `types_or`, because pre-commit has no file type tags for `.jsonc`, `.mts`, `.cts` or `.gql`.
+  
+  Re-running `ultracite init` with the same integrations updates the hooks, globs and file types that earlier versions wrote, in place. Hooks, globs and types you wrote or edited yourself are left alone.
+- ed5ed04: `ultracite init` and `upgrade` now install `oxlint`, `oxfmt` and `oxlint-tsgolint` at the versions the presets were checked against, as they already did for Biome, instead of the latest release. `oxfmt` is still before 1.0, so a new release could change how files are formatted the next time you ran `upgrade`, and a new `oxlint` major could fall outside the supported range. The peer ranges are tightened to match, so `ultracite doctor` flags an `oxfmt` the presets weren't checked against.
+  
+  Requires oxfmt >= 0.71.0 and < 1.0.0 Requires prettier >= 3.5.3 (the version `prettier-plugin-astro` needs)
+- 528a17c: `ultracite upgrade` now brings your configuration up to date, not just your packages, and replaces the manual upgrade guides.
+  
+  - `--claude` and `--codex` hand the configuration changes a project still needs to that agent's CLI, after Ultracite and the toolchain are installed. The agent gets the upgrade guide for each major release the configuration predates: Biome 2's config format (v5), the per-framework presets (v6), and the `ultracite/biome/*` preset paths and `check` and `fix` commands (v7). It runs as it does for `fix --claude`, limited to editing files, and Ultracite checks the project again afterwards, exiting non-zero when a change is still missing.
+  - Which guides apply is decided from the project, not the version it came from, so a project that skipped a major release or had `ultracite` bumped by hand still gets them. Without an agent flag, `upgrade` lists them. They ship in the package under `skills/ultracite/references/upgrades/` and with the Ultracite skill.
+  - `--version <version>` installs a given release, such as `7` (the newest 7.x) or `7.13.0`, instead of the latest.
+  - Ultracite's own `-v` and `--version` now only work before a command, so `upgrade --version` is the upgrade's option. `ultracite --version` prints the version as before.
+
+### Minor Changes
+
+- ed5ed04: `ultracite init --agents` no longer stops on an agent ID it doesn't know. Every agent reads the rules from `AGENTS.md`, so an unknown, retired or misspelled ID gets that file, as `universal` does, with a warning that lists the valid IDs. The old IDs of renamed agents and editors (`amazon-q-cli`, `mux`, `kimi-cli`, `snowflake-cortex` and `windsurf`) map to the new ones with a note to switch. `--editors` and `--hooks` still stop on an ID they don't know.
+
+### Patch Changes
+
+- ed5ed04: Agent hooks now run the project's installed Ultracite directly, as `npx ultracite fix --hook` (or `pnpm exec`, `bunx` and so on), instead of the project's `fix` script. Init leaves a `fix` script alone when the project already has one that runs another tool, and the hook then ran that tool with `--hook` added. Re-running `ultracite init --hooks` rewrites hooks from earlier versions in place.
+- 6bfeba2: Fix Biome refusing to run in a new project with no ignore file of its own. The core preset reads ignores from version control, and Biome looks for them only in the folder that holds `biome.jsonc`, so it stopped with "Biome couldn't find an ignore file" outside a git repository, and in a package below the repository root, until that folder had a `.gitignore`. When `init` creates `biome.jsonc` in a folder with no `.git`, `.gitignore` or `.ignore`, it now sets `vcs.root` to the repository root, or writes a `.gitignore` with `node_modules` when there's no repository.
+- ed5ed04: The Biome `type-aware` preset no longer turns on `useImportExtensions`, which required a file extension on every relative import. The Oxlint and ESLint presets leave import extensions to the bundler and TypeScript (`import/extensions` is off), and Biome's `core` preset already had the rule off, so turning on type-aware linting no longer adds it.
+- a30bde7: Add a post-edit hook for Deep Agents. `init --hooks deepagents` writes `.deepagents/hooks.json` in Claude Code's format, with a `PostToolUse` hook that runs `ultracite fix --hook` after each `Write` or `Edit`. Deep Agents Code (`dcode`) runs a project's hooks once you trust the workspace (headless runs need `--trust-project-hooks`), and when the hook exits with code 2 it appends the problems `fix` couldn't settle to the tool result the model reads.
+- ed5ed04: `ultracite init` now installs the linter's editor extension into the editor you picked. Every VS Code-based editor used to run `code --install-extension`, which put the extension in VS Code rather than in Cursor, Windsurf, Kiro or the others. Each editor now uses its own launcher: `code` for VS Code, `cursor` for Cursor, `devin-desktop` for Windsurf (now Devin Desktop, falling back to `windsurf` on installs from before the rename), `kiro` for Kiro and `void` for Void. When the launcher isn't on your `PATH`, init asks you to install the extension yourself, as it does when an install fails. Antigravity, CodeBuddy, IBM Bob and Trae get the same message, since Ultracite doesn't run a launcher for them. CodeBuddy's `codebuddy` command, for one, is its terminal agent, not the IDE.
+- ed5ed04: `init --frameworks angular` with ESLint now installs the `@angular-eslint/eslint-plugin` version the Angular preset is tested against, instead of the latest release, which could add or rename rules the preset didn't know about.
+- ed5ed04: `ultracite check` and `fix` on the ESLint toolchain no longer warn about each file you pass that no ESLint config covers, such as `README.md` or `package.json`. A pre-commit hook that passes every staged file hit "File ignored because no matching configuration was supplied" on most commits. Ultracite now passes `--no-warn-ignored` to ESLint when you name files, unless you pass `--warn-ignored` or `--no-warn-ignored` yourself.
+- 6f5b7ba: Install the Ultracite skill where AdaL, IBM Bob and Qoder look for it. They read skills only from their own folders (`.adal/skills`, `.bob/skills`, `.qoder/skills`), never from the shared `.agents/skills`, so they never found it. `init` now installs the skill for each of them you choose in `--agents`, and for any whose folder the project already has.
+
 ## 7.12.4
 
 ### Patch Changes
